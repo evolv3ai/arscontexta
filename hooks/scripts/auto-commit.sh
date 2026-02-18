@@ -14,6 +14,12 @@ cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 GUARD_DIR="$(cd "$(dirname "$0")" && pwd)"
 "$GUARD_DIR/vaultguard.sh" || exit 0
 
+# Check config — skip if git automation is disabled
+READ_CONFIG="$(cd "$(dirname "$0")" && pwd)/read_config.sh"
+if [ "$(bash "$READ_CONFIG" "git" "true")" != "true" ]; then
+  exit 0
+fi
+
 # Only commit if inside a git repository
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   exit 0
