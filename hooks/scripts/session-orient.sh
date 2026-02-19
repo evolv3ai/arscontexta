@@ -1,10 +1,71 @@
 #!/bin/bash
 # Ars Contexta — Session Orientation Hook
 # Injects workspace structure, identity, methodology, and maintenance signals at session start.
+# Also handles session tracking (capture moved here from Stop hook — fires once per session).
 
 # Only run in Ars Contexta vaults
 GUARD_DIR="$(cd "$(dirname "$0")" && pwd)"
 "$GUARD_DIR/vaultguard.sh" || exit 0
+
+# ── Session tracking (silent — no stdout) ──────────────────────
+# SessionStart provides session info as JSON on stdin.
+# Read it before any echo statements.
+
+INPUT=$(cat)
+SESSION_ID=""
+if command -v jq &>/dev/null; then
+  SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
+else
+  SESSION_ID=$(echo "$INPUT" | grep -o '"session_id":"[^"]*"' | head -1 | sed 's/"session_id":"//;s/"//')
+fi
+
+READ_CONFIG="$GUARD_DIR/read_config.sh"
+
+if [ -n "$SESSION_ID" ] && [ "$(bash "$READ_CONFIG" "session_capture" "true")" = "true" ]; then
+  TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+  mkdir -p ops/sessions
+
+  # Promote previous session if it's a different ID
+  if [ -f ops/sessions/current.json ]; then
+    if command -v jq &>/dev/null; then
+      PREV_ID=$(jq -r '.id // empty' ops/sessions/current.json)
+      PREV_STARTED=$(jq -r '.started // empty' ops/sessions/current.json)
+    else
+      PREV_ID=$(grep -o '"id":"[^"]*"' ops/sessions/current.json | head -1 | sed 's/"id":"//;s/"//')
+      PREV_STARTED=$(grep -o '"started":"[^"]*"' ops/sessions/current.json | head -1 | sed 's/"started":"//;s/"//')
+    fi
+
+    if [ -n "$PREV_ID" ] && [ "$PREV_ID" != "$SESSION_ID" ]; then
+      # Different session — promote previous to timestamped archive
+      ARCHIVE_TS="${PREV_STARTED:-$TIMESTAMP}"
+      mv ops/sessions/current.json "ops/sessions/${ARCHIVE_TS}.json"
+    fi
+  fi
+
+  # Write current session
+  cat > ops/sessions/current.json << EOF
+{
+  "id": "$SESSION_ID",
+  "started": "$TIMESTAMP",
+  "status": "active"
+}
+EOF
+
+  # Git commit if enabled
+  if [ "$(bash "$READ_CONFIG" "git" "true")" = "true" ] && git rev-parse --is-inside-work-tree &>/dev/null; then
+    git add ops/sessions/ 2>/dev/null
+    [ -f self/goals.md ] && git add self/goals.md 2>/dev/null
+    [ -f ops/goals.md ] && git add ops/goals.md 2>/dev/null
+    git commit -m "Session start: ${TIMESTAMP}" --quiet --no-verify 2>/dev/null || true
+  fi
+fi
+
+# Export session ID for later hooks
+if [ -n "$CLAUDE_ENV_FILE" ] && [ -n "$SESSION_ID" ]; then
+  echo "export CLAUDE_SESSION_ID='$SESSION_ID'" >> "$CLAUDE_ENV_FILE"
+fi
+
+# ── Context injection (stdout → conversation) ──────────────────
 
 echo "## Workspace Structure"
 echo ""

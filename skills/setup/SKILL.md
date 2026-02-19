@@ -1517,13 +1517,22 @@ Include a discovery section in the context file documenting what queries exist, 
 
 #### Step 15: Vault Marker
 
-Create `.arscontexta` in the vault root. This marker ensures plugin-level hooks only run inside vaults, even when the plugin is installed globally.
+Create `.arscontexta` in the vault root. This marker file identifies the directory as an Ars Contexta vault (hooks only run when it exists) and doubles as the hook configuration file.
 
+```yaml
+# Ars Contexta vault marker + config
+# This file identifies the directory as an Ars Contexta vault.
+# Do not delete — hooks only run when this file exists.
+
+git: true
+session_capture: true
 ```
-|(^.^)  henlo, i am a vaultguard
-please dont delete me — i make sure arscontexta hooks only run
-in your vault, even if you installed the plugin globally
-```
+
+Keys and defaults:
+- `git: true` — auto-commit on writes (auto-commit.sh)
+- `session_capture: true` — session JSON capture on start (session-orient.sh)
+
+Omitted keys default to `true`, so a minimal marker file (or even an empty file) preserves full default behaviour.
 
 ---
 
